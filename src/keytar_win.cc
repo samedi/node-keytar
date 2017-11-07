@@ -5,6 +5,9 @@
 #include <windows.h>
 #include <wincred.h>
 
+#include "credentials.h"
+#include <iostream>
+
 namespace keytar {
 
 LPWSTR utf8ToWideChar(std::string utf8) {
@@ -85,9 +88,15 @@ KEYTAR_OP_RESULT SetPassword(const std::string& service,
     return FAIL_ERROR;
   }
 
+  LPWSTR user_name = utf8ToWideChar(account);
+  if (target_name == NULL) {
+    return FAIL_ERROR;
+  }
+
   CREDENTIAL cred = { 0 };
   cred.Type = CRED_TYPE_GENERIC;
   cred.TargetName = target_name;
+  cred.UserName = user_name;
   cred.CredentialBlobSize = password.size();
   cred.CredentialBlob = (LPBYTE)(password.data());
   cred.Persist = CRED_PERSIST_LOCAL_MACHINE;
@@ -201,19 +210,19 @@ KEYTAR_OP_RESULT FindCredentials(const std::string& service,
   }
 
   for (unsigned int i=0; i<count; ++i) {
-    *CREDENTIAL credential = creds[i];
+    CREDENTIAL* credential = creds[i];
 
     if (credential->UserName == NULL || credential->CredentialBlob == NULL) {
       continue;
     }
 
-    string login(credential->UserName);
-    string password(reinterpret_cast<char*>(credential->CredentialBlob));
+    std::string login = wideCharToAnsi(credential->UserName);
+    std::string password(reinterpret_cast<char*>(credential->CredentialBlob));
 
-    credentials.push_back(Credentials(login, password));
+    credentials->push_back(Credentials(login, password));
   }
 
-  CredFree(cred);
+  CredFree(creds);
 
   return SUCCESS;
 }
