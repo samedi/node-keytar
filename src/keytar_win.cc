@@ -181,4 +181,42 @@ KEYTAR_OP_RESULT FindPassword(const std::string& service,
   return SUCCESS;
 }
 
+KEYTAR_OP_RESULT FindCredentials(const std::string& service,
+                                 std::vector<Credentials>* credentials,
+                                 std::string* errStr) {
+  LPWSTR filter = utf8ToWideChar(service + "*");
+
+  DWORD count;
+  CREDENTIAL **creds;
+
+  bool result = ::CredEnumerate(filter, 0, &count, &creds);
+  if (!result) {
+    DWORD code = ::GetLastError();
+    if (code == ERROR_NOT_FOUND) {
+      return FAIL_NONFATAL;
+    } else {
+      *errStr = getErrorMessage(code);
+      return FAIL_ERROR;
+    }
+  }
+
+  for (unsigned int i=0; i<count; ++i) {
+    *CREDENTIAL credential = creds[i];
+
+    if (credential->UserName == NULL || credential->CredentialBlob == NULL) {
+      continue;
+    }
+
+    string login(credential->UserName);
+    string password(reinterpret_cast<char*>(credential->CredentialBlob));
+
+    credentials.push_back(Credentials(login, password));
+  }
+
+  CredFree(cred);
+
+  return SUCCESS;
+}
+
+
 }  // namespace keytar
