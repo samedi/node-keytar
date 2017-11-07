@@ -5,6 +5,9 @@
 #include <windows.h>
 #include <wincred.h>
 
+#include "credentials.h"
+#include <iostream>
+
 namespace keytar {
 
 LPWSTR utf8ToWideChar(std::string utf8) {
@@ -85,9 +88,15 @@ KEYTAR_OP_RESULT SetPassword(const std::string& service,
     return FAIL_ERROR;
   }
 
+  LPWSTR user_name = utf8ToWideChar(account);
+  if (target_name == NULL) {
+    return FAIL_ERROR;
+  }
+
   CREDENTIAL cred = { 0 };
   cred.Type = CRED_TYPE_GENERIC;
   cred.TargetName = target_name;
+  cred.UserName = user_name;
   cred.CredentialBlobSize = password.size();
   cred.CredentialBlob = (LPBYTE)(password.data());
   cred.Persist = CRED_PERSIST_LOCAL_MACHINE;
@@ -180,5 +189,43 @@ KEYTAR_OP_RESULT FindPassword(const std::string& service,
   ::CredFree(creds);
   return SUCCESS;
 }
+
+KEYTAR_OP_RESULT FindCredentials(const std::string& service,
+                                 std::vector<Credentials>* credentials,
+                                 std::string* errStr) {
+  LPWSTR filter = utf8ToWideChar(service + "*");
+
+  DWORD count;
+  CREDENTIAL **creds;
+
+  bool result = ::CredEnumerate(filter, 0, &count, &creds);
+  if (!result) {
+    DWORD code = ::GetLastError();
+    if (code == ERROR_NOT_FOUND) {
+      return FAIL_NONFATAL;
+    } else {
+      *errStr = getErrorMessage(code);
+      return FAIL_ERROR;
+    }
+  }
+
+  for (unsigned int i=0; i<count; ++i) {
+    CREDENTIAL* credential = creds[i];
+
+    if (credential->UserName == NULL || credential->CredentialBlob == NULL) {
+      continue;
+    }
+
+    std::string login = wideCharToAnsi(credential->UserName);
+    std::string password(reinterpret_cast<char*>(credential->CredentialBlob));
+
+    credentials->push_back(Credentials(login, password));
+  }
+
+  CredFree(creds);
+
+  return SUCCESS;
+}
+
 
 }  // namespace keytar
